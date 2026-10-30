@@ -133,7 +133,7 @@ export class ReelController extends Component {
                 this.slotGameManager.forcedToWin = false;
             }
 
-            console.error(`[TEST MODE] Forcing Regular Win on Reel ${this.reelIndex}`);
+            //console.error(`[TEST MODE] Forcing Regular Win on Reel ${this.reelIndex}`);
 
         }
 

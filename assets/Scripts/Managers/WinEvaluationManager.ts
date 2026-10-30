@@ -1,4 +1,4 @@
-﻿import { _decorator, Component, Node, Sprite, SpriteFrame, Label } from 'cc';
+﻿import { _decorator, Component, Node, Sprite, SpriteFrame, Label, tween } from 'cc';
 import { SlotEvents } from '../Data/SlotEvents';
 import { PlayerInfo } from '../Player/PlayerInfo';
 import { SlotGameManager } from '../Managers/SlotGameManager';
@@ -44,6 +44,9 @@ export class WinEvaluationManager extends Component {
 
     @property(SpriteFrame)
     public scatterBG: SpriteFrame | null = null;
+
+    //Status
+    public isShowingPrize = false; //if true the player cannot spin for the meantime
 
 
    //#region Cocos Default Lifecycle
@@ -114,7 +117,7 @@ export class WinEvaluationManager extends Component {
 
     //#endregion
 
-    //#region method for checking patterns
+    //#region Helpers for pattern
     
     // Evaluates all standard paylines (with descriptive names) and scatter wins, logging detailed match info.
     public checkPaylines(grid: SymbolConfig[][]): number {
@@ -134,7 +137,7 @@ export class WinEvaluationManager extends Component {
         let hasNormalWin = false;
         let winningSprite: SpriteFrame | null = null; // Store the winning symbol's sprite
 
-        console.log("--- EVALUATING PAYLINES ---");
+        //Evaluating Paylines
         for (let lineInfo of paylines) {
             let line = lineInfo.coords;
             const sym1 = grid[line[0][0]][line[0][1]];
@@ -143,15 +146,29 @@ export class WinEvaluationManager extends Component {
 
             let winningSymbol = this.getMatchingSymbolWithWild(sym1, sym2, sym3);
 
-            if (winningSymbol) {
+            if (winningSymbol)
+            {
+                //Mark this so SpinController.ts cannot Scroll 
+                this.isShowingPrize = true;
+
                 let multiplier = winningSymbol.payoutValue || 1;
                 let lineWin = bet * multiplier;
                 totalWinAmount += lineWin;
 
                 winningSprite = winningSymbol.symbolSprite; // Capture the winning sprite here
 
+                for (const coord of line) {
+                    let row = coord[0];
+                    let col = coord[1];
+                    // Get the SymbolView component at this grid position and animate it:
+                    let symbolViewNode = this.getSymbolViewAt(row, col);
+                    if (symbolViewNode) {
+                        symbolViewNode.playWinAnimation();
+                    }
+                }
+
                 // Detailed log showing the specific line name and matched symbol name!
-                console.log(`🎉 HIT! [${lineInfo.name}] Symbol: '${winningSymbol.symbolName}' | Payout: ${lineWin} | Bet: ${bet} x Multiplier: ${multiplier}`);
+                //console.log(`🎉 HIT! [${lineInfo.name}] Symbol: '${winningSymbol.symbolName}' | Payout: ${lineWin} | Bet: ${bet} x Multiplier: ${multiplier}`);
                 this.winDetailsLabel.string = `🎉 HIT! [${lineInfo.name}] Symbol: '${winningSymbol.symbolName}' | Payout: ${lineWin} | Bet: ${bet} x Multiplier: ${multiplier}`;
 
 
@@ -181,23 +198,51 @@ export class WinEvaluationManager extends Component {
                 this.slotGameManager.DeactivateAutoSpin();
             }
 
-            // Determine win type, fire events, and pass the correct background and symbol sprite frames
-            if (scatterWinAmount > 0) {
-                SlotEvents.OnScatterWin.raise();
-                this.showWinPanel(totalWinAmount, this.scatterBG, winningSprite);
-            } else if (hasWildWin) {
-                SlotEvents.OnWildWin.raise();
-                this.showWinPanel(totalWinAmount, this.wildBG, winningSprite);
-            } else if (hasNormalWin) {
-                SlotEvents.OnNormalWin.raise();
-                this.showWinPanel(totalWinAmount, this.winSlotBG, winningSprite);
-            }
+            // Use a tween delay to wait 3 seconds before popping up the win panel
+            //I used tween instead of async because I don't think the evaluateSpinResults being async is necessary
+            tween(this.node)
+                .delay(3.0)
+                .call(() => {
+                    // Determine win type, fire events, and pass the correct background and symbol sprite frames
+                    if (scatterWinAmount > 0) {
+                        SlotEvents.OnScatterWin.raise();
+                        this.showWinPanel(totalWinAmount, this.scatterBG, winningSprite);
+                    } else if (hasWildWin) {
+                        SlotEvents.OnWildWin.raise();
+                        this.showWinPanel(totalWinAmount, this.wildBG, winningSprite);
+                    } else if (hasNormalWin) {
+                        SlotEvents.OnNormalWin.raise();
+                        this.showWinPanel(totalWinAmount, this.winSlotBG, winningSprite);
+                    }
+                })
+                .start();
         }
 
         // Final total win summary log
         console.log(`Total Win Amount Calculated: ${totalWinAmount}`);
 
         return totalWinAmount;
+    }
+
+    // Helper to fetch the actual SymbolView component on the grid by row (0-2) and reel/column index (0-2)
+    private getSymbolViewAt(row: number, col: number): SymbolView | null {
+        if (!this.reelController || !this.reelController[col]) return null;
+
+        let reelComp = this.reelController[col];
+        if (!reelComp || !reelComp.symbolContainer) return null;
+
+        let symbolViews = reelComp.symbolContainer.getComponentsInChildren(SymbolView);
+        if (!symbolViews || symbolViews.length === 0) return null;
+
+        const targetYs = [-240, -360, -480]; // Top, Middle, Bottom
+        let targetY = targetYs[row];
+
+        // Find the closest symbol view to that row's target Y coordinate on this reel
+        let closestView = symbolViews.reduce((prev, curr) =>
+            Math.abs(curr.node.position.y - targetY) < Math.abs(prev.node.position.y - targetY) ? curr : prev
+        );
+
+        return closestView || null;
     }
 
     // Determines if three symbols match on a line, factoring in wild card substitutions.
@@ -282,6 +327,7 @@ export class WinEvaluationManager extends Component {
         if (this.winPanel)
         {
             this.winPanel.active = false;
+            this.isShowingPrize = false; //Mark that we are not showing price anymore so player can spin again
         }
     }
     //#endregion

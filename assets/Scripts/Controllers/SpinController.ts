@@ -8,6 +8,7 @@ import { _decorator, Component, Label } from 'cc';
 import { SlotEvents } from '../Data/SlotEvents';
 import { PlayerInfo } from '../Player/PlayerInfo';
 import { SlotGameManager, GameSpeedMode } from '../Managers/SlotGameManager';
+import { WinEvaluationManager } from '../Managers/WinEvaluationManager';
 const { ccclass, property } = _decorator;
 
 @ccclass('SpinController')
@@ -19,6 +20,9 @@ export class SpinController extends Component {
 
     @property(SlotGameManager)
     public slotGameManager: SlotGameManager | null = null;
+
+    @property(WinEvaluationManager)
+    public winEvaluationManager: WinEvaluationManager
 
     //Label Reference
     @property(Label)
@@ -56,6 +60,9 @@ export class SpinController extends Component {
     //#region onclick events
     // OnClick event for the Spin_Btn
     public ClickSpinStop(): void {
+
+        if (this.winEvaluationManager.isShowingPrize) return; //Since there is a pulse animation first when player got a correct answer, so player should not be able to click stuff yet
+
         // If we are NOT spinning, clicking this button triggers a NEW SPIN
         if (!this._isSpinning) {
             if (!this.playerInfo || !this.slotGameManager) {
