@@ -1,7 +1,6 @@
 import { _decorator, Component, Node, Label } from 'cc';
 import { SymbolConfig } from '../Data/SymbolConfig';
 import { SlotEvents } from '../Data/SlotEvents';
-import { SpinController } from '../Controllers/SpinController';
 import { ReelController } from '../Controllers/ReelController';
 import { PlayerInfo } from '../Player/PlayerInfo';
 const { ccclass, property } = _decorator;
@@ -46,16 +45,32 @@ export class SlotGameManager extends Component {
     @property(Label)
     public speedButtonLabel: Label | null = null;
 
+    // Reference to Auto Spin Label UI element
+    @property(Label)
+    public autoSpinButtonLabel: Label | null = null;
+
+    // Auto Spin State
+    private _isAutoSpinActive: boolean = false;
+
     private _isSpinning: boolean = false;
 
-    //Speed Config
+    // Speed Config
     private _currentSpeedIndex: number = 0;
     private _speedModes: GameSpeedMode[] = [GameSpeedMode.Normal, GameSpeedMode.Fast, GameSpeedMode.Turbo];
     private _speedLabels: string[] = ["1x", "2x", "3x"];
 
-    //Speed Getter
+    // Cheat Config
+    @property
+    public forcedToWin: boolean = false;
+
+
+    // Public Getter
+    public get isAutoSpinActive(): boolean {
+        return this._isAutoSpinActive; //Getter for Auto Spin State
+    }
+
     public get currentSpeedMode(): GameSpeedMode {
-        return this._speedModes[this._currentSpeedIndex];
+        return this._speedModes[this._currentSpeedIndex]; //getter for current speed mode
     }
 
     //#region Lifecycle Methods
@@ -82,6 +97,7 @@ export class SlotGameManager extends Component {
 
     //#endregion
 
+    //#region event Listener
     private onSpinStarted = () => {
         this._isSpinning = true;
     }
@@ -89,6 +105,7 @@ export class SlotGameManager extends Component {
     private onSpinStopped = () => {
         this._isSpinning = false;
     }
+    //#endregion
 
     //#region Methods
 
@@ -110,6 +127,11 @@ export class SlotGameManager extends Component {
         }
     }
 
+    //Calls in WinEvaluationManager.ts when we will show a reward so it stop the auto spin
+    public DeactivateAutoSpin(): void {
+        this._isAutoSpinActive = false;
+    }
+
     public defaultBet(): void {
         if (this.playerInfo) {
             this.currentBet += this.minimumBet
@@ -121,7 +143,7 @@ export class SlotGameManager extends Component {
     public updateBetLabel(): void {
         if (this.betLabel) {
             this.betLabel.string = this.currentBet.toString();
-            console.log(`Current bet updated to: ${this.currentBet}`);
+            //console.log(`Current bet updated to: ${this.currentBet}`);
         } else {
             console.warn("Bet Label is not assigned in the Inspector!");
         }
@@ -194,6 +216,29 @@ export class SlotGameManager extends Component {
                 reel.setSpeedMode(activeSpeedMode);
             }
         }
+    }
+
+    // Called in Speed_Panel AutoSpin_Btn
+    public clickAutoSpin(): void {
+        // Toggle the state
+        this._isAutoSpinActive = !this._isAutoSpinActive;
+
+        const activeLabel = this._isAutoSpinActive ? "Auto: On" : "Auto: Off";
+
+        // Update the button UI label
+        if (this.autoSpinButtonLabel)
+        {
+            this.autoSpinButtonLabel.string = activeLabel;
+        }
+
+        //Raise Global event for futue use
+        if (activeLabel) {
+            SlotEvents.OnAutoSpinOn.raise();
+        } else {
+            SlotEvents.OnAutoSpinOff.raise();
+        }
+
+        //console.log("Auto Spin toggled: " + activeLabel);
     }
 
     public clickOkayWarning(): void {

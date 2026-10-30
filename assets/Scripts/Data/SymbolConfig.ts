@@ -14,4 +14,11 @@ export class SymbolConfig {
 
     @property(SpriteFrame)
     public symbolSprite: SpriteFrame;
+
+    @property
+    public isWild: boolean = false;
+
+    @property
+    public isScatter: boolean = false;
 }
+

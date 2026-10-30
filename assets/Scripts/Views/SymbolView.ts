@@ -8,11 +8,15 @@ export class SymbolView extends Component {
     @property(Sprite)
     private symbolSprite: Sprite | null = null;
 
+    
+    public symbolConfig: SymbolConfig | null = null;
+
+    public symbolN: string;
+
+
     public init(config: SymbolConfig): void {
-        // Fallback in case the slot wasn't assigned in the prefab
-        if (!this.symbolSprite) {
-            this.symbolSprite = this.getComponent(Sprite);
-        }
+
+        this.symbolConfig = config; //Saved the config details assigned to it
 
         if (!this.symbolSprite) {
             console.error("SymbolView: no Sprite component found on", this.node.name);

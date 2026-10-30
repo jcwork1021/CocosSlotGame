@@ -29,7 +29,7 @@ export class PlayerInfo extends Component {
     private updateBalanceUI(): void {
         if (this.balanceLabel) {
             this.balanceLabel.string = this._currentBalance.toString();
-            console.log(`Balance updated to: ${this._currentBalance}`);
+            //console.log(`Balance updated to: ${this._currentBalance}`);
         }
     }
 }

@@ -24,36 +24,74 @@ export class SpinController extends Component {
     @property(Label)
     public buttonLabel: Label | null = null;
 
-    //Status
-    public _isSpinning: boolean = false;
+    @property(Label)
+    public freeSpinLabel: Label | null = null;
 
+    // Free spin config
+    public paidSpinCount: number = 3; // Number of paid spins required to unlock a free spin
+
+    //Status Tracker
+    private _isSpinning: boolean = false;
+
+    // Free Spin tracking variables
+    private _freeSpinInCounter: number = this.paidSpinCount;
+    private _isNextFreeSpin: boolean = false;
+
+    //#region Cocos Default Lifecycle
     onLoad() {
 
         SlotEvents.OnSpinStarted.register(this.onSpinStarted);
         SlotEvents.OnSpinStopped.register(this.onSpinStopped);
+
+        //Display
+        this.freeSpinLabel.string = `Free Spin in: ${this._freeSpinInCounter}`;
     }
 
     onDestroy() {
         SlotEvents.OnSpinStarted.unregister(this.onSpinStarted);
         SlotEvents.OnSpinStopped.unregister(this.onSpinStopped);
     }
+    //#endregion
 
-    // Inside your ClickSpinStop() method in SpinController.ts:
+    //#region onclick events
+    // OnClick event for the Spin_Btn
     public ClickSpinStop(): void {
+        // If we are NOT spinning, clicking this button triggers a NEW SPIN
         if (!this._isSpinning) {
             if (!this.playerInfo || !this.slotGameManager) {
                 console.error("PlayerInfo or SlotGameManager is not assigned in the Inspector!");
                 return;
             }
 
-            // Check balance...
-            if (this.playerInfo.currentBalance < this.slotGameManager.currentBet) {
-                this.slotGameManager.enableWarningPanel(true, "Insufficient Balance!");
-                return;
+            if (this._isNextFreeSpin) {
+                console.log("Executing Free Spin! Skipping balance deduction.");
+                this._isNextFreeSpin = false; // Consume the free spin
             }
+            else {
+                // Check balance for normal paid spin...
+                if (this.playerInfo.currentBalance < this.slotGameManager.currentBet) {
+                    this.slotGameManager.enableWarningPanel(true, "Insufficient Balance!");
+                    SlotEvents.OnInSufficientBalance.raise();
+                    return;
+                }
 
-            this.slotGameManager.enableWarningPanel(false, "");
-            this.playerInfo.currentBalance -= this.slotGameManager.currentBet;
+                this.slotGameManager.enableWarningPanel(false, "");
+                this.playerInfo.currentBalance -= this.slotGameManager.currentBet;
+
+                // Increment paid spin counter
+                this._freeSpinInCounter -= 1;
+                if (this.freeSpinLabel)
+                {
+                    this.freeSpinLabel.string = `Free Spin in: ${this._freeSpinInCounter}`;
+                }
+
+                // Check if we hit the paid spin threshold to unlock the next one as free
+                if (this._freeSpinInCounter <= 0) {
+                    this._freeSpinInCounter = this.paidSpinCount;
+                    this._isNextFreeSpin = true;
+                    SlotEvents.OnFreeSpinClaimed.raise(); // Raise event for future use
+                }
+            }
 
             // 1. Start the spin normally
             SlotEvents.OnSpinStarted.raise();
@@ -67,12 +105,31 @@ export class SpinController extends Component {
             }
         }
         else {
-            // Manual stop when player clicks "STOP" during normal/fast modes
+            // If we ARE spinning, clicking this button triggers a MANUAL STOP
             SlotEvents.OnSpinStopped.raise();
         }
     }
 
-    private onSpinStarted = () => {
+    //onclick of SureWin_Btn from Bet_Panel
+    public clickSureWin(): void {
+
+        if (this.slotGameManager.forcedToWin) return; //so cannot press twice
+        this.slotGameManager.forcedToWin = true;
+        this.ClickSpinStop();
+    }
+
+    /*
+    //onclick of ScatterWin_Btn from Bet_Panel
+    public clickScatterWin(): void {
+        this.gameFlagsManager.forceScatterNextspin = true;
+        this.ClickSpinStop();
+    }
+    */
+    //#endregion
+
+    //#region Event Listener
+    private onSpinStarted = () =>
+    {
         this._isSpinning = true;
         if (this.buttonLabel) {
             this.buttonLabel.string = "STOP";
@@ -82,7 +139,19 @@ export class SpinController extends Component {
     private onSpinStopped = () => {
         this._isSpinning = false;
         if (this.buttonLabel) {
-            this.buttonLabel.string = "SPIN";
+            // If the next spin is a free spin, show "FREE", otherwise show "SPIN"
+            this.buttonLabel.string = this._isNextFreeSpin ? "FREE" : "SPIN";
+        }
+
+        // Check if Auto Spin is active via SlotGameManager
+        if (this.slotGameManager && this.slotGameManager.isAutoSpinActive) {
+            this.scheduleOnce(() => {
+                if (this.slotGameManager && this.slotGameManager.isAutoSpinActive) {
+                    console.log("Auto Spin: Triggering next round...");
+                    this.ClickSpinStop();
+                }
+            }, 0.8);
         }
     }
+    //#endregion
 }
