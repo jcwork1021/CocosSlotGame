@@ -1,8 +1,16 @@
 import { _decorator, Component, Node, Label } from 'cc';
 import { SymbolConfig } from '../Data/SymbolConfig';
+import { SlotEvents } from '../Data/SlotEvents';
+import { SpinController } from '../Controllers/SpinController';
 import { ReelController } from '../Controllers/ReelController';
 import { PlayerInfo } from '../Player/PlayerInfo';
 const { ccclass, property } = _decorator;
+
+export enum GameSpeedMode {
+    Normal = 1,
+    Fast = 2,
+    Turbo = 3
+}
 
 @ccclass('SlotGameManager')
 export class SlotGameManager extends Component {
@@ -10,27 +18,45 @@ export class SlotGameManager extends Component {
     @property(SymbolConfig)
     public symbolDatabase: SymbolConfig[] = []; // Configure symbols here
 
+    //Reference from other script
     @property([ReelController])
     public reels: ReelController[] = []; // Drag Reel nodes here
 
+    @property(PlayerInfo)
+    public playerInfo: PlayerInfo | null = null;
+
+    //Bet Config
     @property
     public minimumBet: number = 10; // Minimum bet limit
 
     @property
     public currentBet: number = 10; // Default bet, but can be changed via UI buttons!
 
+    //Reference to UI Elements for Warning Panel
     @property(Node)
     public warningPanel: Node | null = null; // Warning_Panel GameObject
 
     @property(Label)
     public warningLabel: Label | null = null; // Warning_Label component
 
+    //Reference to other Label Elements
     @property(Label)
     public betLabel: Label | null = null; // Bet_Label component
 
-    @property(PlayerInfo)
-    public playerInfo: PlayerInfo | null = null;
+    @property(Label)
+    public speedButtonLabel: Label | null = null;
 
+    private _isSpinning: boolean = false;
+
+    //Speed Config
+    private _currentSpeedIndex: number = 0;
+    private _speedModes: GameSpeedMode[] = [GameSpeedMode.Normal, GameSpeedMode.Fast, GameSpeedMode.Turbo];
+    private _speedLabels: string[] = ["1x", "2x", "3x"];
+
+    //Speed Getter
+    public get currentSpeedMode(): GameSpeedMode {
+        return this._speedModes[this._currentSpeedIndex];
+    }
 
     //#region Lifecycle Methods
     start() {
@@ -43,8 +69,26 @@ export class SlotGameManager extends Component {
         }
 
         this.defaultBet();
+
+        // Listen to spin events globally
+        SlotEvents.OnSpinStarted.register(this.onSpinStarted);
+        SlotEvents.OnSpinStopped.register(this.onSpinStopped);
     }
+
+    onDestroy() {
+        SlotEvents.OnSpinStarted.unregister(this.onSpinStarted);
+        SlotEvents.OnSpinStopped.unregister(this.onSpinStopped);
+    }
+
     //#endregion
+
+    private onSpinStarted = () => {
+        this._isSpinning = true;
+    }
+
+    private onSpinStopped = () => {
+        this._isSpinning = false;
+    }
 
     //#region Methods
 
@@ -56,8 +100,6 @@ export class SlotGameManager extends Component {
             console.warn("Symbol Database is empty! Please configure symbols in the Inspector.");
             return;
         }
-
-
 
         // Initialize each reel column
         for (const reel of this.reels) {
@@ -97,34 +139,6 @@ export class SlotGameManager extends Component {
     //#endregion
 
     //#region UI Button Calls
-
-    // Called in Bet_Panel, Spin_Btn
-    public clickSpin(): void {
-        if (!this.playerInfo) {
-            console.error("Player Info is not assigned in the Inspector!");
-            return;
-        }
-
-        // Check if player has enough balance to cover the bet
-        if (this.playerInfo.currentBalance < this.currentBet) {
-            this.enableWarningPanel(true, "Insufficient Balance!");
-            return;
-        }
-
-        // Hide any active warnings if valid
-        this.enableWarningPanel(false, "");
-
-        this.playerInfo.currentBalance -= this.currentBet;
-
-        console.log(`Spin button clicked! Bet placed: ${this.currentBet}. Remaining Balance: ${this.playerInfo.currentBalance}`);
-
-        for (const reel of this.reels) {
-            if (reel) {
-                reel.startSpin();
-            }
-        }
-    }
-
     // Called in Bet_Panel, Increase_Btn
     public clickIncreaseBet(): void {
         const step = 10; // Increment step
@@ -152,6 +166,33 @@ export class SlotGameManager extends Component {
             this.updateBetLabel();
         } else {
             this.enableWarningPanel(true, `Minimum bet is ${this.minimumBet}!`);
+        }
+    }
+
+    // Called in Speed_Panel, Speed_Btn
+    public clickSpeed(): void {
+
+        // Prevent speed change while spinning using the local event-driven flag
+        if (this._isSpinning) return;
+
+        // Cycle to the next speed index (loops back to 0 at the end)
+        this._currentSpeedIndex = (this._currentSpeedIndex + 1) % this._speedModes.length;
+
+        const activeSpeedMode = this._speedModes[this._currentSpeedIndex];
+        const activeLabel = "Speed: " + this._speedLabels[this._currentSpeedIndex];
+
+        // Update the button UI label
+        if (this.speedButtonLabel) {
+            this.speedButtonLabel.string = activeLabel;
+        }
+
+        console.log("Game speed changed to: " + activeLabel);
+
+        // Apply the speed multiplier directly to all registered reels
+        for (const reel of this.reels) {
+            if (reel) {
+                reel.setSpeedMode(activeSpeedMode);
+            }
         }
     }
 
